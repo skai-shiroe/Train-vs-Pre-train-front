@@ -44,10 +44,26 @@ pip install -r requirements.txt
 
 ### Lancer
 
+Le plus simple : un script de lancement gère le venv pour vous (crée l'environnement
++ installe les dépendances au premier lancement, puis démarre le serveur) :
+
 ```bash
+# Windows (PowerShell)
+.\run.ps1
+
+# Linux / macOS
+./run.sh
+```
+
+Ou manuellement (venv actif obligatoire, sinon `streamlit` n'est pas sur le PATH) :
+
+```bash
+python -m venv .venv
+# Windows (PowerShell) : .venv\Scripts\Activate.ps1
+# Linux / macOS        : source .venv/bin/activate
+pip install -r requirements.txt
 streamlit run streamlit_app.py
-# ou, en module :
-python -m streamlit run streamlit_app.py
+python -m streamlit run streamlit_app.py   # variante module
 ```
 
 Puis ouvrir **http://localhost:8501**. Le CORS du backend autorise déjà ce
