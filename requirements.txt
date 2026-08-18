@@ -1,0 +1,3 @@
+# Dépendances du frontend Streamlit Train-vs-Pre-train.
+streamlit>=1.57
+requests>=2.31

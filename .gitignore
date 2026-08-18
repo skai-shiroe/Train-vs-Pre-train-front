@@ -1,0 +1,25 @@
+# Environnement virtuel Python
+.venv/
+venv/
+env/
+
+# Fichiers Python compilés
+__pycache__/
+*.pyc
+*.pyo
+
+# Secrets locaux (ne jamais versionner)
+.streamlit/secrets.toml
+
+# Éditeurs / IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs du serveur local
+st.log
+st.err
+*.log

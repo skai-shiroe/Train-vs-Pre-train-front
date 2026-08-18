@@ -1,0 +1,56 @@
+# Thème de l'application Train vs Pre-train
+# Palette professionnelle sombre (slate / bleu), inspirée d'un dashboard financier.
+
+[theme]
+base = "dark"
+primaryColor = "#60A5FA"             # Bleu lumineux, bon contraste sur boutons
+backgroundColor = "#0F172A"          # Slate profond
+secondaryBackgroundColor = "#1E293B" # Slate légèrement plus clair
+codeBackgroundColor = "#1E293B"
+textColor = "#F1F5F9"                # Texte clair
+linkColor = "#60A5FA"
+borderColor = "#334155"
+codeTextColor = "#CBD5E1"
+showWidgetBorder = true
+showSidebarBorder = true
+baseRadius = "6px"
+buttonRadius = "6px"
+
+# Typographie : Inter (texte + titres), JetBrains Mono (code)
+font = "'Inter':https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+headingFont = "'Inter':https://fonts.googleapis.com/css2?family=Inter:wght@600;700&display=swap"
+codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
+baseFontSize = 14
+baseFontWeight = 400
+codeFontSize = "13px"
+headingFontSizes = ["28px", "22px", "18px", "16px", "14px", "12px"]
+headingFontWeights = [700, 600, 600, 600, 500, 500]
+linkUnderline = false
+
+# Couleurs sémantiques (statuts, indicateurs)
+greenColor = "#34D399"
+redColor = "#F87171"
+yellowColor = "#FBBF24"
+orangeColor = "#FB923C"
+blueColor = "#60A5FA"
+violetColor = "#A78BFA"
+grayColor = "#94A3B8"
+
+# Palette des graphiques
+chartCategoricalColors = [
+    "#60A5FA", "#34D399", "#A78BFA", "#F87171",
+    "#FBBF24", "#38BDF8", "#94A3B8", "#FB923C",
+]
+
+# Style des dataframes
+dataframeBorderColor = "#334155"
+dataframeHeaderBackgroundColor = "#1E293B"
+
+# Barre latérale
+[theme.sidebar]
+backgroundColor = "#0F172A"
+secondaryBackgroundColor = "#1E293B"
+codeBackgroundColor = "#1E293B"
+textColor = "#F1F5F9"
+borderColor = "#334155"
+primaryColor = "#60A5FA"
