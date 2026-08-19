@@ -23,3 +23,6 @@ Thumbs.db
 st.log
 st.err
 *.log
+
+# Télémétrie locale (historique de monitoring)
+.metrics/

@@ -93,6 +93,7 @@ pages = st.navigation(
         ],
         "Information": [
             st.Page("app_pages/models.py", title="Modèles & API", icon=":material/dashboard:"),
+            st.Page("app_pages/monitor.py", title="Monitoring", icon=":material/monitor_heart:"),
             st.Page("app_pages/docs.py", title="Documentation", icon=":material/menu_book:"),
         ],
     },
