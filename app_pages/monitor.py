@@ -22,7 +22,7 @@ import pandas as pd
 import streamlit as st
 
 import monitoring
-from api_client import MODEL_ICONS, MODEL_LABELS, ApiError, get_health, get_health_detail
+from api_client import MODEL_ICONS, MODEL_LABELS, ApiError, get_health, get_health_detail, get_metrics
 from services import cached_models
 from ui import availability_badge
 
@@ -60,8 +60,8 @@ def _load_frame(records: list[dict]) -> pd.DataFrame:
                 "inference_ms": r.get("inference_ms"),
                 "in_chars": r.get("input_chars"),
                 "out_chars": r.get("output_chars"),
-                "error": r.get("error"),
-                "summary": r.get("summary_preview"),
+                "error": r.get("error") if isinstance(r.get("error"), str) else None,
+                "summary": r.get("summary_preview") if isinstance(r.get("summary_preview"), str) else None,
             }
         )
     return pd.DataFrame(rows)
@@ -109,10 +109,24 @@ def _fmt_hms(seconds: float) -> str:
 
 
 def _fmt_pct(value: float) -> str:
-    """Formate un pourcentage lisible, ou « — » si NaN."""
-    if value != value:
+    """Formate un pourcentage lisible, ou « — » si NaN/None."""
+    if value is None or value != value:
         return "—"
     return f"{value:.0f}%"
+
+
+def _fmt_num(value: float | None) -> str:
+    """Formate un nombre entier, ou « — » si None/NaN."""
+    if value is None or value != value:
+        return "—"
+    return f"{value:.0f}"
+
+
+def _fmt_ms(value: float | None) -> str:
+    """Formate une durée en ms, ou « — » si None/NaN."""
+    if value is None or value != value:
+        return "—"
+    return f"{value:.0f} ms"
 
 
 def _quantiles(series: pd.Series) -> dict[str, float]:
@@ -189,8 +203,7 @@ def render_kpis(base: str) -> None:
     m5.metric("Requêtes", f"{total}", border=True,
               delta=f"{success:.0f}% succès",
               delta_color="normal" if success >= 80 else "off")
-    m6.metric("Latence moy.", f"{avg_dur:.0f} ms" if avg_dur == avg_dur else "—",
-              border=True)
+    m6.metric("Latence moy.", _fmt_ms(avg_dur), border=True)
 
 
 def render_extended_kpis(records: list[dict]) -> None:
@@ -218,14 +231,11 @@ def render_extended_kpis(records: list[dict]) -> None:
     c3.metric("Débit", f"{rate:.1f} req/min", border=True)
     c4.metric("Inférence cumulée", f"{total_inf:.1f} s", border=True)
     c5.metric("Succès", _fmt_pct(ok_count / len(frame) * 100), border=True)
-    c6.metric("Sortie moy.", f"{avg_out:.0f}" if avg_out == avg_out else "—",
-              border=True)
+    c6.metric("Sortie moy.", _fmt_num(avg_out), border=True)
 
     c7, c8, c9, c10 = st.columns(4)
-    c7.metric("Latence P95", f"{p95_all:.0f} ms" if p95_all == p95_all else "—",
-              border=True)
-    c8.metric("Inférence P95", f"{p95_inf:.0f} ms" if p95_inf == p95_inf else "—",
-              border=True)
+    c7.metric("Latence P95", _fmt_ms(p95_all), border=True)
+    c8.metric("Inférence P95", _fmt_ms(p95_inf), border=True)
     c9.metric("Inférences", f"{len(inf)}", border=True)
     files_ = int((frame["route"] == "/summarize-file").sum())
     c10.metric("Fichiers", f"{files_}", border=True)
@@ -416,7 +426,7 @@ def render_errors(records: list[dict]) -> None:
     frame = _load_frame(records)
     failed = frame[frame["ok"] == False]  # noqa: E712
     if failed.empty:
-        st.success("Aucune erreur enregistrée. 🎉", icon=":material/verified:")
+        st.success("Aucune erreur enregistrée. ", icon=":material/verified:")
         return
 
     c1, c2, c3 = st.columns(3)
@@ -466,6 +476,76 @@ def render_engine(base: str) -> None:
         st.write(cks)
 
 
+@st.fragment(run_every="5s")
+def render_live_health(base: str) -> None:
+    """Suivi temps réel du backend via ``GET /metrics`` (CPU, RAM, débit).
+
+    Le fragment se ré-exécute automatiquement toutes les 5 secondes (les
+    métriques proviennent du middleware de l'API, côté serveur).
+    """
+    st.markdown("### :material/monitor_heart: Santé backend — temps réel")
+    try:
+        m = get_metrics(base)
+    except ApiError as exc:
+        st.error(exc.message, icon=":material/error:")
+        return
+
+    cur = m.get("current") or {}
+    tot = m.get("totals") or {}
+    c1, c2, c3, c4, c5 = st.columns(5)
+    cpu = cur.get("cpu_pct")
+    mem = cur.get("memory_rss_mb")
+    c1.metric("CPU", f"{cpu} %" if cpu is not None else "—", border=True,
+              delta_color="normal" if (cpu is None or cpu < 80) else "inverse")
+    c2.metric("RAM (RSS)", f"{mem:,.0f} Mo".replace(",", " ") if mem is not None else "—",
+              border=True)
+    c3.metric("Requêtes", f"{tot.get('requests', 0)}", border=True)
+    c4.metric("Succès", _fmt_pct(float(tot.get("success_rate", 0) or 0)),
+              border=True)
+    c5.metric("Uptime", _fmt_hms(m.get("uptime_s")), border=True)
+
+    ts = m.get("timeseries") or {}
+
+    graph_a, graph_b = st.columns(2)
+    with graph_a:
+        cpu_df = pd.DataFrame(ts.get("cpu_pct") or [])
+        if not cpu_df.empty:
+            cpu_df["ts"] = pd.to_datetime(cpu_df["ts"], unit="ms")
+            st.markdown("**CPU (%) — évolution**")
+            st.line_chart(cpu_df.set_index("ts").rename(columns={"value": "CPU (%)"}))
+        else:
+            st.caption("CPU : pas encore de sondes.")
+
+        rpm_df = pd.DataFrame(ts.get("requests_per_minute") or [])
+        if not rpm_df.empty:
+            rpm_df["ts"] = pd.to_datetime(rpm_df["ts"], unit="ms")
+            st.markdown("**Appels / minute**")
+            st.bar_chart(rpm_df.set_index("ts").rename(columns={"value": "Requêtes"}))
+    with graph_b:
+        mem_df = pd.DataFrame(ts.get("memory_mb") or [])
+        if not mem_df.empty:
+            mem_df["ts"] = pd.to_datetime(mem_df["ts"], unit="ms")
+            st.markdown("**Mémoire RSS (Mo)**")
+            st.line_chart(mem_df.set_index("ts").rename(columns={"value": "RAM (Mo)"}))
+
+        lat_df = pd.DataFrame(ts.get("latency_avg") or [])
+        if not lat_df.empty:
+            lat_df["ts"] = pd.to_datetime(lat_df["ts"], unit="ms")
+            st.markdown("**Latence serveur moy. (ms)**")
+            st.line_chart(lat_df.set_index("ts").rename(columns={"value": "Latence (ms)"}))
+
+    st.markdown("**Appels par endpoint**")
+    per_path = m.get("per_path") or {}
+    endpoint_rows = [{"Endpoint": k, "Requêtes": v} for k, v in per_path.items()]
+    if endpoint_rows:
+        st.dataframe(pd.DataFrame(endpoint_rows), hide_index=True)
+    else:
+        st.caption("Aucune requête enregistrée côté serveur pour l'instant.")
+
+    st.caption("Fenêtre de 30 minutes · auto-actualisation toutes les 5 s (module "
+               ":mono:`app.metrics` du backend).")
+
+
 def render_log(records: list[dict]) -> None:
     """Journal détaillé et filtrable des requêtes, avec aperçus des réponses."""
     st.markdown("### :material/receipt_long: Journal des requêtes")
@@ -511,7 +591,7 @@ def render_log(records: list[dict]) -> None:
             icon = ":green-badge[OK]" if r["ok"] else ":red-badge[ERREUR]"
             st.markdown(
                 f"- **`{r['method']} {r['route']}`** {icon} "
-                f"· {r['model']} · `{r['status']}` · {r['duration_ms']:.0f} ms"
+                f"· {r['model']} · `{r['status']}` · {_fmt_ms(r['duration_ms'])}"
             )
             if r["summary"]:
                 st.caption(f"→ {r['summary'][:220]}")
@@ -563,6 +643,7 @@ render_charts(records)
 render_availability(records)
 render_errors(records)
 render_engine(base)
+render_live_health(base)
 
 st.markdown("### :material/view_module: État détaillé des modèles")
 try:
