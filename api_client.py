@@ -8,6 +8,7 @@ message est directement affichable dans l'interface.
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Any
 
@@ -15,8 +16,10 @@ import requests
 
 import monitoring
 
-#: URL par défaut du backend FastAPI (uvicorn sur le port 8000).
-DEFAULT_BASE_URL = "http://127.0.0.1:8000"
+#: URL par défaut du backend FastAPI. Surchargée par la variable d'environnement
+#: ``API_BASE_URL`` : en conteneur Docker, l'hôte du backend est le nom de
+#: service ``backend`` (``http://backend:8000``) plutôt que ``127.0.0.1``.
+DEFAULT_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
 
 #: Timeout global (secondes). L'inférence CPU en beam search peut être lente.
 REQUEST_TIMEOUT = 180
@@ -83,11 +86,19 @@ def _extract_detail(resp: requests.Response) -> str:
     return f"Erreur API ({resp.status_code}) : {resp.text[:300]}"
 
 
-def _request(method: str, base_url: str, path: str, **kwargs: Any) -> Any:
+def _request(
+    method: str,
+    base_url: str,
+    path: str,
+    *,
+    record: bool = True,
+    **kwargs: Any,
+) -> Any:
     """Exécute une requête HTTP, normalise les erreurs et journalise la télémétrie.
 
-    Chaque appel — succès comme échec — est mesuré (latence totale) puis enregistré
-    dans le module :mod:`monitoring` pour alimenter la page « Monitoring ».
+    Enregistre dans :mod:`monitoring` chaque appel (succès comme échec) sauf si
+    ``record`` est ``False`` — utilisé pour les sondes internes (``/metrics``)
+    afin de ne pas polluer le journal local avec leurs propres appels.
     """
     url = f"{base_url.rstrip('/')}{path}"
     start = time.perf_counter()
@@ -99,15 +110,16 @@ def _request(method: str, base_url: str, path: str, **kwargs: Any) -> Any:
             f"Impossible de joindre l'API sur {base_url}. "
             f"Vérifiez que le backend uvicorn est démarré. Détail : {exc}"
         )
-        monitoring.record(
-            method=method,
-            path=path,
-            status_code=None,
-            ok=False,
-            duration_ms=duration_ms,
-            params=_request_params(path, **kwargs),
-            error=message,
-        )
+        if record:
+            monitoring.record(
+                method=method,
+                path=path,
+                status_code=None,
+                ok=False,
+                duration_ms=duration_ms,
+                params=_request_params(path, **kwargs),
+                error=message,
+            )
         raise ApiError(message) from exc
 
     duration_ms = (time.perf_counter() - start) * 1000
@@ -115,34 +127,37 @@ def _request(method: str, base_url: str, path: str, **kwargs: Any) -> Any:
 
     if resp.status_code >= 400:
         detail = _extract_detail(resp)
-        monitoring.record(
-            method=method,
-            path=path,
-            status_code=status_code,
-            ok=False,
-            duration_ms=duration_ms,
-            model=_request_model(path, **kwargs),
-            params=_request_params(path, **kwargs),
-            error=detail,
-        )
+        if record:
+            monitoring.record(
+                method=method,
+                path=path,
+                status_code=status_code,
+                ok=False,
+                duration_ms=duration_ms,
+                model=_request_model(path, **kwargs),
+                params=_request_params(path, **kwargs),
+                error=detail,
+            )
         raise ApiError(detail, status_code=status_code)
 
     try:
         body = resp.json()
     except ValueError as exc:
         message = f"Réponse non JSON reçue de {url}."
-        monitoring.record(
-            method=method,
-            path=path,
-            status_code=status_code,
-            ok=False,
-            duration_ms=duration_ms,
-            params=_request_params(path, **kwargs),
-            error=message,
-        )
+        if record:
+            monitoring.record(
+                method=method,
+                path=path,
+                status_code=status_code,
+                ok=False,
+                duration_ms=duration_ms,
+                params=_request_params(path, **kwargs),
+                error=message,
+            )
         raise ApiError(message) from exc
 
-    _record_success(method, path, status_code, duration_ms, body, kwargs)
+    if record:
+        _record_success(method, path, status_code, duration_ms, body, kwargs)
     return body
 
 
@@ -252,6 +267,15 @@ def get_health_detail(base_url: str) -> dict[str, Any]:
 def get_models(base_url: str) -> list[dict[str, Any]]:
     """``GET /models`` — liste les modèles et leur état."""
     return _request("GET", base_url, "/models")
+
+
+def get_metrics(base_url: str) -> dict[str, Any]:
+    """``GET /metrics`` — télémétrie côté serveur (CPU, RAM, débit, appels/min).
+
+    Sondes mesurées/échantillonnées par le backend ; on ne journalise pas cet
+    appel dans le monitoring local (``record=False``) pour ne pas le polluer.
+    """
+    return _request("GET", base_url, "/metrics", record=False)
 
 
 def summarize(
