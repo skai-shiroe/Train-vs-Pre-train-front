@@ -1,0 +1,2 @@
+# Dépendances de développement (tests) du frontend Streamlit.
+pytest>=8.0
