@@ -10,8 +10,9 @@ from __future__ import annotations
 import streamlit as st
 
 from api_client import MODEL_ICONS, MODEL_LABELS, ApiError, compare, summarize
+from examples import EXAMPLES
 from services import cached_models
-from ui import render_summary_card, text_stats
+from ui import comparison_table, export_comparison, render_summary_card, text_stats
 
 st.markdown("## :material/compare: Comparer les modèles")
 st.caption(
@@ -53,6 +54,33 @@ def _render_side_by_side(result: dict) -> None:
 
     with st.expander("Réponse brute de l'API"):
         st.json(result)
+
+
+def _render_comparison(result: dict) -> None:
+    """Tableau de comparaison quantitative T5 vs Scratch + export Markdown."""
+    source = result.get("text", "")
+    t5 = result.get("t5")
+    scratch = result.get("scratch")
+    if not (t5 or scratch):
+        return
+
+    st.markdown("### :material/query_stats: Comparaison quantitative")
+    col_tbl, col_exp = st.columns([3, 2])
+    with col_tbl:
+        st.dataframe(comparison_table(source, t5, scratch), hide_index=True)
+    with col_exp:
+        st.markdown("**Exporter**")
+        st.download_button(
+            "Télécharger (.md)",
+            data=export_comparison(source, t5, scratch),
+            file_name="comparaison.md",
+            mime="text/markdown",
+            icon=":material/download:",
+            use_container_width=True,
+        )
+        st.caption(
+            "Comparaison chiffrée : longueurs, temps et similarité des résumés."
+        )
 
 
 # Vérifier la disponibilité des modèles (pour guider l'utilisateur).
@@ -100,6 +128,13 @@ text = st.text_area(
     key="compare_text",
 )
 
+# Exemples prêts à l'emploi (démo rapide).
+with st.expander("Essayer un exemple", icon=":material/bolt:"):
+    for label, sample in EXAMPLES.items():
+        if st.button(label, icon=":material/text_snippet:", use_container_width=True):
+            st.session_state.compare_text = sample
+            st.rerun()
+
 if text.strip():
     stats = text_stats(text)
     st.caption(f"{stats['chars']:,} caractères · {stats['words']:,} mots · "
@@ -130,6 +165,7 @@ if submit:
             else:
                 st.toast("Comparaison terminée !", icon=":material/check_circle:")
                 _render_side_by_side(result)
+                _render_comparison(result)
     else:
         # Scratch indisponible : repli sur T5 seul.
         with st.spinner("Résumé T5 en cours (scratch indisponible)…"):
@@ -141,3 +177,4 @@ if submit:
                 st.toast("Résumé T5 généré (scratch indisponible).",
                          icon=":material/info:")
                 _render_side_by_side({"text": text, "t5": t5_result, "scratch": None})
+                _render_comparison({"text": text, "t5": t5_result, "scratch": None})

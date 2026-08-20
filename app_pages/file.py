@@ -5,7 +5,7 @@ from __future__ import annotations
 import streamlit as st
 
 from api_client import MODEL_ICONS, MODEL_LABELS, ApiError, summarize_file
-from ui import render_summary_card
+from ui import render_summary_card, summary_actions
 
 st.markdown("## :material/upload_file: Résumer un fichier")
 st.caption(
@@ -87,5 +87,6 @@ if submit and uploaded is not None:
             st.space("small")
             render_summary_card(result, title=f"{MODEL_LABELS[model_choice]} · "
                                               f"{MODEL_ICONS.get(model_choice, '')}")
+            summary_actions(result, file_stem=uploaded.name)
             with st.expander("Réponse brute de l'API"):
                 st.json(result)
