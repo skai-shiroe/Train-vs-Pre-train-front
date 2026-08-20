@@ -14,6 +14,7 @@ import streamlit as st
 
 from api_client import DEFAULT_BASE_URL, MODEL_ICONS, ApiError
 from services import cached_health, cached_models, force_refresh
+from theme import inject_theme, theme_controls
 
 st.set_page_config(
     page_title="Train vs Pre-train — Résumé automatique",
@@ -26,10 +27,12 @@ st.session_state.setdefault("api_base", DEFAULT_BASE_URL)
 
 
 def render_sidebar() -> None:
-    """Panneau latéral commun : connexion + disponibilité des modèles."""
+    """Panneau latéral commun : thème, connexion + disponibilité des modèles."""
     base = st.session_state.api_base
 
     with st.sidebar:
+        theme_controls()
+
         st.header("Train vs Pre-train", anchor=False)
         st.caption("Résumé automatique : Transformer from scratch **vs** T5")
 
@@ -101,6 +104,11 @@ pages = st.navigation(
 )
 
 render_sidebar()
+
+# Injection du thème dans le corps principal (hors sidebar) pour que le CSS
+# cible bien le document de l'application.
+theme = st.session_state.get("theme", "dark")
+inject_theme(theme)
 
 page = pages
 page.run()
